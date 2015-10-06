@@ -28,9 +28,6 @@
 %% useful utility functions
 -export([ip2long/1]).
 
-%% little benchmark function
--export([bench/0, bench/1]).
-
 -include("egeoip.hrl").
 
 %% geoip record API
@@ -220,7 +217,7 @@ handle_info(Info, State) ->
 %% Implementation
 get_worker(Address) ->
     element(
-        1 + erlang:phash2(Address, egeoip_cluster:worker_count()), 
+        1 + erlang:phash2(Address, egeoip_cluster:worker_count()),
         egeoip_cluster:worker_names()
     ).
 
@@ -492,35 +489,7 @@ load_file(Path) ->
             end
     end.
 
-benchcall(Fun, 1) ->
-    Fun();
-benchcall(Fun, Times) ->
-    Fun(),
-    benchcall(Fun, Times - 1).
-
-pytime({MegaSecs, Secs, MicroSecs}) ->
-    (1.0e+6 * MegaSecs) + Secs + (1.0e-6 * MicroSecs).
-
-bench(Count) ->
-    SampleIPs = ["63.224.214.117",
-                 "144.139.80.91",
-                 "88.233.53.82",
-                 "85.250.32.5",
-                 "220.189.211.182",
-                 "211.112.118.99",
-                 "84.94.205.244",
-                 "61.16.226.206",
-                 "64.180.1.78",
-                 "138.217.4.11"],
-    StartParse = now(),
-    benchcall(fun () -> [lookup(X) || X <- SampleIPs] end, Count),
-    EndParse = now(),
-    {parse_100k_addr, pytime(EndParse) - pytime(StartParse)}.
-
 ensure_binary_list(L) when is_list(L) ->
     list_to_binary(L);
 ensure_binary_list(Other) ->
     Other.
-
-bench() ->
-    bench(10000).

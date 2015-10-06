@@ -8,7 +8,7 @@
 
 -export([start_link/0]).
 -export([init/1, init_cluster/0, init_cluster/1]).
--export([worker/2]).
+-export([worker/2, id/1]).
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
@@ -17,9 +17,13 @@ init([]) ->
 
     init_cluster(),
 
+    {ConfigModule, ConfigFun} = case application:get_env(egeoip, config_interp) of
+                                    {ok, {Cm, Cf}} -> {Cm, Cf};
+                                    _              -> {?MODULE, id}
+                                end,
     File = case application:get_env(egeoip, dbfile) of
         {ok, Other} ->
-            Other;
+            ConfigModule:ConfigFun(Other);
         _ ->
             city
     end,
@@ -62,3 +66,8 @@ init_cluster(NumNodes) ->
     {M, B} = dynamic_compile:from_string(ModuleString),
     code:load_binary(M, "", B).
 
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
+
+id(X) -> X.
