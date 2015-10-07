@@ -365,7 +365,8 @@ read_structures(Path, Data, Seek, N) when N > 0 ->
                      filename = Path};
         _ ->
             read_structures(Path, Data, Seek - 1, N - 1)
-    end.
+    end;
+read_structures(_,_,_,_) -> throw(read_structures_failure).
 
 get_record(D, SeekCountry) when D#geoipdb.segments =:= SeekCountry ->
     #geoip{};
