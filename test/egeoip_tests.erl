@@ -43,21 +43,21 @@ egeoip_reserved_gen() ->
                     postal_code = <<>>,
                     area_code = 0,
                     dma_code = 0}},
-       egeoip:lookup(Ip))
+       egeoip:lookup(dbname, Ip))
      || Ip <- ["0.0.0.1", "127.0.0.1", "10.0.0.1", "192.168.0.1"]].
 
 egeoip() ->
     {ok, IpAddressLong} = egeoip:ip2long({207,145,216,106}),
     {ok, IpAddressLong} = egeoip:ip2long("207.145.216.106"),
     {ok, IpAddressLong} = egeoip:ip2long(<<207,145,216,106>>),
-    {ok, R} = egeoip:lookup(IpAddressLong),
+    {ok, R} = egeoip:lookup(dbname, IpAddressLong),
     #geoip{country_code = "US",
            country_code3 = "USA",
            country_name = "United States",
            region = <<"CA">>,
            _ = _} = R,
     %% This is the test IP that MaxMind uses
-    {ok, R1} = egeoip:lookup("24.24.24.24"),
+    {ok, R1} = egeoip:lookup(dbname, "24.24.24.24"),
     #geoip{country_code = "US",
            country_code3 = "USA",
            country_name = "United States",
@@ -73,7 +73,7 @@ egeoip_fail() ->
                              city = <<>>,
                              postal_code = <<>>,
                              area_code = 0,
-                             dma_code = 0}}, egeoip:lookup("2")),
+                             dma_code = 0}}, egeoip:lookup(dbname, "2")),
     ok.
 
 %% countrydb doesn't provide region info
@@ -81,21 +81,21 @@ egeoip_countrydb() ->
     {ok, IpAddressLong} = egeoip:ip2long({207,145,216,106}),
     {ok, IpAddressLong} = egeoip:ip2long("207.145.216.106"),
     {ok, IpAddressLong} = egeoip:ip2long(<<207,145,216,106>>),
-    {ok, R} = egeoip:lookup(IpAddressLong),
+    {ok, R} = egeoip:lookup(dbname, IpAddressLong),
     #geoip{country_code = "US",
            country_code3 = "USA",
            country_name = "United States",
            _ = _} = R,
     %% This is the test IP that MaxMind uses
-    {ok, R1} = egeoip:lookup("24.24.24.24"),
+    {ok, R1} = egeoip:lookup(dbname, "24.24.24.24"),
     #geoip{country_code = "US",
            country_code3 = "USA",
            country_name = "United States",
            _ = _} = R1.
 
 egeoip_lookup() ->
-    {ok, R1} = egeoip:lookup("24.24.24.24"),
-    {ok, R2} = egeoip:lookup({24,24,24,24}),
+    {ok, R1} = egeoip:lookup(dbname, "24.24.24.24"),
+    {ok, R2} = egeoip:lookup(dbname, {24,24,24,24}),
     ?assertEqual(R1,R2).
 
 non_parallel() ->
@@ -113,26 +113,26 @@ non_parallel() ->
     ?assert(Pid == whereis(egeoip)),
     [?assert(undefined == whereis(W)) || W <- Workers],
     %% Should upgrade when calling lookup
-    {ok, _R} = egeoip:lookup("24.24.24.24"),
+    {ok, _R} = egeoip:lookup(dbname, "24.24.24.24"),
     ?assert(undefined == whereis(egeoip)),
     [?assertNot(undefined == whereis(W)) || W <- Workers].
 
 no_egeoip_test() ->
-    Lookup = {lookup, "24.24.24.24"},
+    Lookup = {lookup, dbname, "24.24.24.24"},
     ?assertExit({noproc,{gen_server,call,[egeoip,Lookup]}},gen_server:call(egeoip, Lookup)).
 
 country_test_gen() ->
     [{Ip ++ " -> " ++ CC ++ " / " ++ C3,
       ?_assertMatch(
          {ok, #geoip{country_code=CC, country_code3=C3}},
-         egeoip:lookup(Ip))}
+         egeoip:lookup(dbname, Ip))}
      || {Ip, CC, C3} <- country_test_data()].
 
 country_test2_gen() ->
     [{Ip ++ " -> " ++ CC,
       ?_assertMatch(
          {ok, #geoip{country_code=CC}},
-         egeoip:lookup(Ip))}
+         egeoip:lookup(dbname, Ip))}
      || {Ip, CC} <- country_test2_data()].
 
 country_test2_data() ->

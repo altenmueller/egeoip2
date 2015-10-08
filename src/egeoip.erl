@@ -14,7 +14,7 @@
 
 %% gen_server based API
 -export([start/0, start/1, start_link/1, start_link/2, stop/0,
-         lookup/1, lookup_pl/1, reload/0, reload/1, filename/0]).
+         lookup/2, lookup_pl/2, reload/0, reload/1, filename/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3,
@@ -22,7 +22,7 @@
 
 %% in-process API
 -export([new/1, new/0]).
--export([lookup/2]).
+-export([lookup/3]).
 
 
 %% useful utility functions
@@ -121,11 +121,11 @@ stop() ->
 %% @spec lookup(Address) -> geoip()
 %% @doc Get a geoip() record for the given address. Fields can be obtained
 %%      from the record using get/2.
-lookup(Address) when is_integer(Address) ->
+lookup(Dbname, Address) when is_integer(Address) ->
     case whereis(egeoip) of
         undefined ->
             Worker = get_worker(Address),
-            gen_server:call(Worker, {lookup, Address});
+            gen_server:call(Worker, {lookup, Dbname, Address});
         Pid ->
             unregister(egeoip),
             register(egeoip_0, Pid),
@@ -135,20 +135,20 @@ lookup(Address) when is_integer(Address) ->
             lists:map(fun(Spec) ->
                               {ok, _Pid} = supervisor:start_child(egeoip_sup, Spec)
                       end, Specs),
-            lookup(Address)
+            lookup(Dbname, Address)
     end;
-lookup(Address) ->
+lookup(Dbname, Address) ->
     case ip2long(Address) of
         {ok, Ip} ->
-            lookup(Ip);
+            lookup(Dbname, Ip);
         Error ->
             Error
     end.
 
 %% @spec lookup_pl(Address) -> geoip()
 %% @doc Get a proplist version of a geoip() record for the given address.
-lookup_pl(Address) ->
-    case lookup(Address) of
+lookup_pl(Dbname, Address) ->
+    case lookup(Dbname, Address) of
         {ok, #geoip{} = R} ->
             E = record_info(fields, geoip),
             lists:zip(E, lists:map(fun ensure_binary_list/1,
@@ -185,11 +185,11 @@ handle_call(What,From,State) ->
             {reply,{error,R},State}
     end.
 
-do_handle_call({lookup, Ip}, _From, State) when is_integer(Ip) ->
-    {reply, lookup(State, Ip), State};
-do_handle_call({lookup, Address}, _From, State) ->
+do_handle_call({lookup, Dbname, Ip}, _From, State) when is_integer(Ip) ->
+    {reply, lookup(State, Dbname, Ip), State};
+do_handle_call({lookup, Dbname, Address}, _From, State) ->
     {ok, Ip} = ip2long(Address),
-    {reply, lookup(State, Ip), State};
+    {reply, lookup(State, Dbname, Ip), State};
 do_handle_call({reload, NewState}, _From, _State) ->
     {reply, ok, NewState};
 do_handle_call(filename, _From, State) ->
@@ -255,7 +255,7 @@ new(Path) ->
 
 %% @spec lookup(D::geoipdb(), Addr) -> {ok, geoip()}
 %% @doc Lookup a geoip record for Addr using the database D.
-lookup(D, Addr) when is_integer(Addr) ->
+lookup(D, _Dbname, Addr) when is_integer(Addr) ->
     {ok, lookup_record(D, Addr)}.
 
 default_db([]) ->
