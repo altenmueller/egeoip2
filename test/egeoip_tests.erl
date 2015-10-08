@@ -2,15 +2,33 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("egeoip.hrl").
 
+address_fast_test_() ->
+    [?_assertEqual(invalid_fast_address, egeoip:address_fast("1", 0, 24)),
+     ?_assertEqual(16909060, egeoip:address_fast("1.2.3.4", 0, 24)),
+     ?_assertEqual(3573612662, egeoip:address_fast("213.1.0.118", 0 , 24))].
+
 run_test_() ->
     {inorder,
      {foreach,
       fun egeoip:start/0,
       fun(_) -> egeoip:stop() end,
       [{"egeoip", fun egeoip/0},
+       {"egeoip_fail", fun egeoip_fail/0},
        {"egeoip_lookup", fun egeoip_lookup/0},
        {"egeoip_reserved", {generator, fun egeoip_reserved_gen/0}},
        {"country_test", {generator, fun country_test_gen/0}},
+       {"country_test2", {generator, fun country_test2_gen/0}},
+       {"country_test_countrydb", {generator, fun country_test_gen/0}},
+       {"non_parallel", fun non_parallel/0}]}}.
+
+run_countrydb_test_() ->
+  {inorder,
+     {foreach,
+      fun() -> egeoip:start(country) end,
+      fun(_) -> egeoip:stop() end,
+      [{"egeoip", fun egeoip_countrydb/0},
+       {"egeoip_lookup", fun egeoip_lookup/0},
+       {"egeoip_reserved", {generator, fun egeoip_reserved_gen/0}},
        {"country_test2", {generator, fun country_test2_gen/0}},
        {"non_parallel", fun non_parallel/0}]}}.
 
@@ -44,6 +62,35 @@ egeoip() ->
            country_code3 = "USA",
            country_name = "United States",
            region = <<"NY">>,
+           _ = _} = R1.
+
+
+egeoip_fail() ->
+    ?assertMatch({ok, #geoip{country_code = "",
+                             country_code3 = "",
+                             country_name = "",
+                             region = <<>>,
+                             city = <<>>,
+                             postal_code = <<>>,
+                             area_code = 0,
+                             dma_code = 0}}, egeoip:lookup("2")),
+    ok.
+
+%% countrydb doesn't provide region info
+egeoip_countrydb() ->
+    {ok, IpAddressLong} = egeoip:ip2long({207,145,216,106}),
+    {ok, IpAddressLong} = egeoip:ip2long("207.145.216.106"),
+    {ok, IpAddressLong} = egeoip:ip2long(<<207,145,216,106>>),
+    {ok, R} = egeoip:lookup(IpAddressLong),
+    #geoip{country_code = "US",
+           country_code3 = "USA",
+           country_name = "United States",
+           _ = _} = R,
+    %% This is the test IP that MaxMind uses
+    {ok, R1} = egeoip:lookup("24.24.24.24"),
+    #geoip{country_code = "US",
+           country_code3 = "USA",
+           country_name = "United States",
            _ = _} = R1.
 
 egeoip_lookup() ->
@@ -92,6 +139,7 @@ country_test2_data() ->
     [{"212.118.5.94", "JO"},
      {"64.170.57.29", "US"},
      {"202.7.216.215", "AU"},
+     {"1.2.3.4", "AU"},
      {"212.33.164.149", "SA"},
      {"68.96.110.210", "US"},
      {"213.166.131.168", "SA"},
