@@ -7,8 +7,7 @@ run_test_() ->
      {foreach,
       fun egeoip:start/0,
       fun(_) -> egeoip:stop() end,
-      [{"egeoip_bench", fun egeoip_bench/0},
-       {"egeoip", fun egeoip/0},
+      [{"egeoip", fun egeoip/0},
        {"egeoip_lookup", fun egeoip_lookup/0},
        {"egeoip_reserved", {generator, fun egeoip_reserved_gen/0}},
        {"country_test", {generator, fun country_test_gen/0}},
@@ -28,12 +27,6 @@ egeoip_reserved_gen() ->
                     dma_code = 0}},
        egeoip:lookup(Ip))
      || Ip <- ["0.0.0.1", "127.0.0.1", "10.0.0.1", "192.168.0.1"]].
-
-egeoip_bench() ->
-    ?assertMatch(
-       {_, _},
-       egeoip:bench(1)),
-    ok.
 
 egeoip() ->
     {ok, IpAddressLong} = egeoip:ip2long({207,145,216,106}),
@@ -61,7 +54,7 @@ egeoip_lookup() ->
 non_parallel() ->
     %% recreate the non-parallelized version of egeoip and then verify
     %% that the upgrade works.
-    Workers = [Egeoip | T] = tuple_to_list(egeoip_sup:worker_names()),
+    Workers = [Egeoip | T] = tuple_to_list(egeoip_cluster:worker_names()),
     %% Remove all worker processes except for the first one
     lists:map(fun(Worker) ->
                       ok = supervisor:terminate_child(egeoip_sup, Worker),

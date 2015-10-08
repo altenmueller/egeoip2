@@ -1,7 +1,10 @@
 REBAR ?= $(shell which rebar 2>/dev/null || which ./rebar)
 REBAR_FLAGS ?=
 
-all: compile
+all: deps compile
+
+deps:
+	$(REBAR) get-deps $(REBAR_FLAGS)
 
 compile:
 	$(REBAR) compile $(REBAR_FLAGS)
