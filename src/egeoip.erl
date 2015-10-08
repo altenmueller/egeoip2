@@ -245,9 +245,8 @@ new(Path) ->
     case filelib:is_file(Path) of
         true ->
             Data = load_file(Path),
-            Max = ?STRUCTURE_INFO_MAX_SIZE,
             FmtMod = egeoip_fmt_dat,
-            State = FmtMod:read_structures(Path, Data, size(Data) - 3, Max),
+            State = FmtMod:read_structures(Path, Data),
             ok = check_state(State),
             {ok, State};
         false ->

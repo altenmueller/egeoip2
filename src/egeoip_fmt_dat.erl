@@ -10,7 +10,11 @@
 -include("egeoip.hrl").
 
 %% API
--export([read_structures/4]).
+-export([read_structures/2]).
+
+read_structures(Path, Data) ->
+    Max = ?STRUCTURE_INFO_MAX_SIZE,
+    read_structures(Path, Data, size(Data) - 3, Max).
 
 read_structures(Path, Data, _Seek, 0) ->
     #geoipdb{segments = ?GEOIP_COUNTRY_BEGIN,
