@@ -14,7 +14,7 @@
 
 %% gen_server based API
 -export([start/0, start/1, start_link/1, start_link/2, stop/0,
-         lookup/2, lookup_pl/2, reload/0, reload/1, filename/0]).
+         lookup/2, lookup_pl/2, filename/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3,
@@ -69,24 +69,6 @@ get(R, List) when is_list(List) ->
     [get(R, X) || X <- List].
 
 %% server API
-
-%% @spec reload() -> ok
-%% @doc Reload the existing database in this process and then change the
-%%      state of the running server.
-reload() ->
-    reload(filename()).
-
-%% @spec reload(Path) -> ok
-%% @doc Load the database at Path in this process and then change the
-%%      state of the running server with the new database.
-reload(FileName) ->
-    case new(FileName) of
-        {ok, NewState} ->
-            Workers = egeoip_cluster:worker_names(),
-            [gen_server:call(W, {reload, NewState})  || W <- tuple_to_list(Workers)];
-        Error ->
-            Error
-    end.
 
 %% @spec start() -> ok
 %% @doc Start the egeoip application with the default database.
@@ -190,8 +172,6 @@ do_handle_call({lookup, Dbname, Ip}, _From, State) when is_integer(Ip) ->
 do_handle_call({lookup, Dbname, Address}, _From, State) ->
     {ok, Ip} = ip2long(Address),
     {reply, lookup(State, Dbname, Ip), State};
-do_handle_call({reload, NewState}, _From, _State) ->
-    {reply, ok, NewState};
 do_handle_call(filename, _From, State) ->
     {reply, State#geoipdb.filename, State}.
 
