@@ -37,18 +37,19 @@ read_structures(Path, Data, Seek, N) when N > 0 ->
         _ ->
             read_structures(Path, Data, Seek - 1, N - 1)
     end;
-read_structures(_,_,_,_) -> {error, no_metadata_sequence}.
+read_structures(_,_,_,_) ->
+    throw(parse_error_no_metadata_sequence).
 
 read_field(Data, Seek) ->
     <<_:Seek/binary, Type:3/integer, SizePart:5/integer, _/binary>> = Data,
     NewSeek = Seek + 1,
     case Type of
         ?MMDB_TYPE_POINTER -> {unimplemented, Seek};
-        ?MMDB_TYPE_UT8 -> {unimplemented, Seek};
+        ?MMDB_TYPE_UT8 -> read_utf8(Data, NewSeek, SizePart);
         ?MMDB_TYPE_DOUBLE -> {unimplemented, Seek};
         ?MMDB_TYPE_BYTES -> {unimplemented, Seek};
-        ?MMDB_TYPE_UINT16 -> {unimplemented, Seek};
-        ?MMDB_TYPE_UINT32 -> {unimplemented, Seek};
+        ?MMDB_TYPE_UINT16 -> read_uint16(Data, NewSeek, SizePart);
+        ?MMDB_TYPE_UINT32 -> read_uint32(Data, NewSeek, SizePart);
         ?MMDB_TYPE_MAP -> read_map(Data, NewSeek, SizePart);
         ?MMDB_TYPE_EXTENDED -> read_extended_field(Data, NewSeek, SizePart)
     end.
@@ -59,8 +60,8 @@ read_extended_field(Data, Seek, SizePart) ->
     Type = ExtendedType + ?MMDB_TYPE_MAP,
     case Type of
         ?MMDB_TYPE_INT32 -> {unimplemented, Seek};
-        ?MMDB_TYPE_UINT64 -> {unimplemented, Seek};
-        ?MMDB_TYPE_UINT128 -> {unimplemented, Seek};
+        ?MMDB_TYPE_UINT64 -> read_uint64(Data, NewSeek, SizePart);
+        ?MMDB_TYPE_UINT128 -> read_uint128(Data, NewSeek, SizePart);
         ?MMDB_TYPE_ARRAY -> read_array(Data, NewSeek, SizePart);
         ?MMDB_TYPE_DATA_CACHE_CONTAINER -> {unimplemented, Seek};
         ?MMDB_TYPE_END_MARKER -> {unimplemented, Seek};
@@ -82,6 +83,32 @@ read_payload_size(Data, Seek, SizePart) ->
         Size -> {Size, Seek}
     end.
 
+read_utf8(Data, Seek, SizePart) ->
+    {Size, NewSeek} = read_payload_size(Data, Seek, SizePart),
+    <<_:NewSeek/binary, Text:Size/binary, _/binary>> = Data,
+    {Text, NewSeek + Size}.
+
+read_uint16(Data, Seek, Size) ->
+    read_uint(Data, Seek, Size, 2).
+
+read_uint32(Data, Seek, Size) ->
+    read_uint(Data, Seek, Size, 4).
+
+read_uint64(Data, Seek, Size) ->
+    read_uint(Data, Seek, Size, 8).
+
+read_uint128(Data, Seek, Size) ->
+    read_uint(Data, Seek, Size, 16).
+
+read_uint(_Data, Seek, 0, _Limit) ->
+    {0, Seek};
+read_uint(_Data, _Seek, Size, Limit) when Size > Limit ->
+    throw(parse_error_uint_size_too_big);
+read_uint(Data, Seek, Size, _Limit) ->
+    SizeInBits = Size * 8,
+    <<_:Seek/binary, Int:SizeInBits/integer, _/binary>> = Data,
+    {Int, Seek + Size}.
+
 read_map(Data, Seek, SizePart) ->
     {NumPairs, NewSeek} = read_payload_size(Data, Seek, SizePart),
     read_map(Data, NewSeek, NumPairs, #{}).
@@ -91,7 +118,7 @@ read_map(_Data, Seek, 0, Acc) ->
 read_map(Data, Seek, NumPairs, Acc) ->
     {Key, ValSeek} = read_field(Data, Seek),
     {Val, NewSeek} = read_field(Data, ValSeek),
-    read_map(Data, NewSeek, NumPairs - 1, Acc#{Key=>Val}).
+    read_map(Data, NewSeek, NumPairs - 1, Acc#{Key => Val}).
 
 read_array(_Data, Seek, _SizePart) ->
     {unimplemented, Seek}.
