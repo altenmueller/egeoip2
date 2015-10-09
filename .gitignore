@@ -7,3 +7,4 @@
 /deps
 *.swp
 .DS_Store
+/.rebar
