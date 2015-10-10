@@ -2,7 +2,7 @@
 -define(MMDB_METADATA_SEQUENCE, <<16#ABCDEF:24, "MaxMind.com">>).
 -define(MMDB_TYPE_EXTENDED, 0).
 -define(MMDB_TYPE_POINTER, 1).
--define(MMDB_TYPE_UT8, 2).
+-define(MMDB_TYPE_UTF8, 2).
 -define(MMDB_TYPE_DOUBLE, 3).
 -define(MMDB_TYPE_BYTES, 4).
 -define(MMDB_TYPE_UINT16, 5).

@@ -9,18 +9,17 @@
 -include("egeoip.hrl").
 
 %% API
--export([read_structures/2]).
+-export([read_structures/1]).
 
-read_structures(Path, Data) ->
+read_structures(Data) ->
     Max = ?MMDB_METADATA_MAX_SIZE,
     SeekStart = size(Data) - size(?MMDB_METADATA_SEQUENCE),
-    read_structures(Path, Data, SeekStart, Max).
+    read_structures(Data, SeekStart, Max).
 
-read_structures(Path, Data, _Seek, 0) ->
+read_structures(Data, _Seek, 0) ->
     #geoipdb{segments = ?GEOIP_COUNTRY_BEGIN,
-        data = Data,
-        filename = Path};
-read_structures(Path, Data, Seek, N) when N > 0 ->
+        data = Data};
+read_structures(Data, Seek, N) when N > 0 ->
     MetaDataSize = size(?MMDB_METADATA_SEQUENCE),
     <<_:Seek/binary, Delim:MetaDataSize/binary, _/binary>> = Data,
     case Delim of
@@ -32,30 +31,29 @@ read_structures(Path, Data, Seek, N) when N > 0 ->
             #geoipdb{type = Type,
                 segments = Segments,
                 record_length = Length,
-                data = Data,
-                filename = Path};
+                data = Data};
         _ ->
-            read_structures(Path, Data, Seek - 1, N - 1)
+            read_structures(Data, Seek - 1, N - 1)
     end;
-read_structures(_,_,_,_) ->
+read_structures(_,_,_) ->
     throw(parse_error_no_metadata_sequence).
 
 get_reader(?MMDB_TYPE_POINTER) -> fun unimplemented/3;
-get_reader(?MMDB_TYPE_UT8) -> fun read_utf8/3;
-get_reader(?MMDB_TYPE_DOUBLE) -> fun unimplemented/3;
+get_reader(?MMDB_TYPE_UTF8) -> fun read_utf8/3;
+get_reader(?MMDB_TYPE_DOUBLE) -> fun read_double/3;
 get_reader(?MMDB_TYPE_BYTES) -> fun unimplemented/3;
 get_reader(?MMDB_TYPE_UINT16) -> fun read_uint16/3;
 get_reader(?MMDB_TYPE_UINT32) -> fun read_uint32/3;
 get_reader(?MMDB_TYPE_MAP) -> fun read_map/3;
 get_reader(?MMDB_TYPE_EXTENDED) -> fun read_extended_field/3;
-get_reader(?MMDB_TYPE_INT32) -> fun unimplemented/3;
+get_reader(?MMDB_TYPE_INT32) -> fun read_int32/3;
 get_reader(?MMDB_TYPE_UINT64) -> fun read_uint64/3;
 get_reader(?MMDB_TYPE_UINT128) -> fun read_uint128/3;
 get_reader(?MMDB_TYPE_ARRAY) -> fun read_array/3;
 get_reader(?MMDB_TYPE_DATA_CACHE_CONTAINER) -> fun unimplemented/3;
 get_reader(?MMDB_TYPE_END_MARKER) -> fun unimplemented/3;
-get_reader(?MMDB_TYPE_BOOLEAN) -> fun unimplemented/3;
-get_reader(?MMDB_TYPE_FLOAT) -> fun unimplemented/3.
+get_reader(?MMDB_TYPE_BOOLEAN) -> fun read_boolean/3;
+get_reader(?MMDB_TYPE_FLOAT) -> fun read_float/3.
 
 read_field(Data, Seek) ->
     <<_:Seek/binary, Type:3/integer, SizePart:5/integer, _/binary>> = Data,
@@ -85,6 +83,10 @@ read_utf8(Data, Seek, SizePart) ->
     <<_:NewSeek/binary, Text:Size/binary, _/binary>> = Data,
     {Text, NewSeek + Size}.
 
+read_int32(Data, Seek, Size) ->
+    <<_:Seek/binary, Value:Size/big-signed-integer-unit:8, _/binary>> = Data,
+    {Value, Seek + 4}.
+
 read_uint16(Data, Seek, Size) ->
     read_uint(Data, Seek, Size, 2).
 
@@ -102,13 +104,22 @@ read_uint(_Data, Seek, 0, _Limit) ->
 read_uint(_Data, _Seek, Size, Limit) when Size > Limit ->
     throw(parse_error_uint_size_too_big);
 read_uint(Data, Seek, Size, _Limit) ->
-    SizeInBits = Size * 8,
-    <<_:Seek/binary, Int:SizeInBits/integer, _/binary>> = Data,
+    <<_:Seek/binary, Int:Size/big-unsigned-integer-unit:8, _/binary>> = Data,
     {Int, Seek + Size}.
 
+read_double(Data, Seek, _Size) ->
+    <<_:Seek/binary, Value:64/float, _/binary>> = Data,
+    {Value, Seek + 8}.
+
+read_float(Data, Seek, _Size) ->
+    <<_:Seek/binary, Value:32/float, _/binary>> = Data,
+    {Value, Seek + 4}.
+
+read_boolean(_Data, Seek, Value) ->
+    {Value, Seek + 1}.
+
 read_map(Data, Seek, SizePart) ->
-    {NumPairs, NewSeek} = read_payload_size(Data, Seek, SizePart),
-    read_map(Data, NewSeek, NumPairs, #{}).
+    read_map(Data, Seek, SizePart, #{}).
 
 read_map(_Data, Seek, 0, Acc) ->
     {Acc, Seek};
