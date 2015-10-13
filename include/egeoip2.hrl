@@ -151,6 +151,7 @@
                   record_length = ?STANDARD_RECORD_LENGTH,
                   segments = 0,
                   data = nil,
+                  meta = nil,
                   filename = nil,
                   country_codes = ?GEOIP_COUNTRY_CODES,
                   country_codes3 = ?GEOIP_COUNTRY_CODES3,

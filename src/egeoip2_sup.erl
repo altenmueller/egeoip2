@@ -1,7 +1,7 @@
 %% @author Bob Ippolito <bob@redivi.com>
 %% @copyright 2006 Bob Ippolito
 
--module(egeoip_sup).
+-module(egeoip2_sup).
 -author('bob@redivi.com').
 
 -behaviour(supervisor).
@@ -17,17 +17,17 @@ init([]) ->
 
     init_cluster(),
 
-    {ConfigModule, ConfigFun} = case application:get_env(egeoip, config_interp) of
+    {ConfigModule, ConfigFun} = case application:get_env(egeoip2, config_interp) of
                                     {ok, {Cm, Cf}} -> {Cm, Cf};
                                     _              -> {?MODULE, id}
                                 end,
-    File = case application:get_env(egeoip, dbfile) of
+    File = case application:get_env(egeoip2, dbfile) of
         {ok, Other} ->
             ConfigModule:ConfigFun(Other);
         _ ->
             city
     end,
-    Processes = worker(tuple_to_list(egeoip_cluster:worker_names()), File),
+    Processes = worker(tuple_to_list(egeoip2_cluster:worker_names()), File),
     {ok, {{one_for_one, 5, 300}, Processes}}.
 
 worker([], _File) ->
@@ -35,8 +35,8 @@ worker([], _File) ->
 worker([Name | T], File) ->
 
     [{Name,
-      {egeoip, start_link, [Name, File]},
-      permanent, 5000, worker, [egeoip]} | worker(T, File)].
+      {egeoip2, start_link, [Name, File]},
+      permanent, 5000, worker, [egeoip2]} | worker(T, File)].
 
 init_cluster() ->
     init_cluster(10).
@@ -44,15 +44,15 @@ init_cluster() ->
 init_cluster(NumNodes) ->
 
     DynModuleBegin = "
-        -module(egeoip_cluster).
+        -module(egeoip2_cluster).
         -export([worker_names/0, worker_count/0]).
 
         worker_count() -> ~p.
 
         worker_names() ->
-            {egeoip_0\n",
+            {egeoip2_0\n",
 
-    DynModuleMap = ", egeoip_~p\n",
+    DynModuleMap = ", egeoip2_~p\n",
     DynModuleEnd = "}.\n",
 
     Nodes = lists:seq(1, NumNodes),

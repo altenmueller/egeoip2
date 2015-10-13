@@ -3,7 +3,7 @@
 
 %% @doc Geolocation by IP address.
 
--module(egeoip).
+-module(egeoip2).
 -author('bob@redivi.com').
 
 -behaviour(gen_server).
@@ -28,7 +28,7 @@
 %% useful utility functions
 -export([ip2long/1]).
 
--include("egeoip.hrl").
+-include("egeoip2.hrl").
 
 %% geoip record API
 
@@ -77,22 +77,22 @@ reload() ->
 reload(FileName) ->
     case new(FileName) of
         {ok, NewState} ->
-            Workers = egeoip_cluster:worker_names(),
+            Workers = egeoip2_cluster:worker_names(),
             [gen_server:call(W, {reload, NewState})  || W <- tuple_to_list(Workers)];
         Error ->
             Error
     end.
 
 %% @spec start() -> ok
-%% @doc Start the egeoip application with the default database.
+%% @doc Start the egeoip2 application with the default database.
 start() ->
-    application:start(egeoip).
+    application:start(egeoip2).
 
 %% @spec start(File) -> ok
-%% @doc Start the egeoip application with the File as database.
+%% @doc Start the egeoip2 application with the File as database.
 start(File) ->
-    application:load(egeoip),
-    application:set_env(egeoip, dbfile, File),
+    application:load(egeoip2),
+    application:set_env(egeoip2, dbfile, File),
     start().
 
 
@@ -111,24 +111,24 @@ start_link(Name, FileName) ->
 %% @spec stop() -> ok
 %% @doc Stop the server.
 stop() ->
-    application:stop(egeoip).
+    application:stop(egeoip2).
 
 %% @spec lookup(Address) -> geoip()
 %% @doc Get a geoip() record for the given address. Fields can be obtained
 %%      from the record using get/2.
 lookup(Address) when is_integer(Address) ->
-    case whereis(egeoip) of
+    case whereis(egeoip2) of
         undefined ->
             Worker = get_worker(Address),
             gen_server:call(Worker, {lookup, Address});
         Pid ->
-            unregister(egeoip),
-            register(egeoip_0, Pid),
+            unregister(egeoip2),
+            register(egeoip2_0, Pid),
             FileName = gen_server:call(Pid, filename),
-            [egeoip_0 | Workers] = tuple_to_list(egeoip_cluster:worker_names()),
-            Specs = egeoip_sup:worker(Workers, FileName),
+            [egeoip2_0 | Workers] = tuple_to_list(egeoip2_cluster:worker_names()),
+            Specs = egeoip2_sup:worker(Workers, FileName),
             lists:map(fun(Spec) ->
-                              {ok, _Pid} = supervisor:start_child(egeoip_sup, Spec)
+                              {ok, _Pid} = supervisor:start_child(egeoip2_sup, Spec)
                       end, Specs),
             lookup(Address)
     end;
@@ -160,7 +160,7 @@ record_fields() ->
 %% @spec filename() -> string()
 %% @doc Get the database filename currently being used by the server.
 filename() ->
-    gen_server:call(element(1, egeoip_cluster:worker_names()), filename).
+    gen_server:call(element(1, egeoip2_cluster:worker_names()), filename).
 
 %% gen_server callbacks
 
@@ -217,8 +217,8 @@ handle_info(Info, State) ->
 %% Implementation
 get_worker(Address) ->
     element(
-        1 + erlang:phash2(Address, egeoip_cluster:worker_count()),
-        egeoip_cluster:worker_names()
+        1 + erlang:phash2(Address, egeoip2_cluster:worker_count()),
+        egeoip2_cluster:worker_names()
     ).
 
 log_error(Info) ->
@@ -237,10 +237,9 @@ new(city) ->
 new(Path) ->
     case filelib:is_file(Path) of
         true ->
-            Data = load_file(Path),
-            Max = ?STRUCTURE_INFO_MAX_SIZE,
-            State = read_structures(Path, Data, size(Data) - 3, Max),
-            ok = check_state(State),
+            {ok, Data} = file:read_file(Path),
+            {ok, Meta} = geodata2_format:meta(Data),
+            State = #geoipdb{meta=Meta,data=Data},
             {ok, State};
         false ->
 	    {error, {geoip_db_not_found,Path}}
@@ -249,7 +248,7 @@ new(Path) ->
 %% @spec lookup(D::geoipdb(), Addr) -> {ok, geoip()}
 %% @doc Lookup a geoip record for Addr using the database D.
 lookup(D, Addr) when is_integer(Addr) ->
-    {ok, lookup_record(D, Addr)}.
+    lookup_record(D, Addr).
 
 default_db([]) ->
     not_found;
@@ -323,7 +322,8 @@ ip2long(_) ->
     {error, badmatch}.
 
 lookup_record(D, Ip) ->
-    get_record(D, seek_country(D, Ip)).
+    {ok, Bits, IPV} = geodata2_ip:make_ip(Ip),
+    geodata2_format:lookup(D#geoipdb.meta, D#geoipdb.data, Bits, IPV).
 
 read_structures(Path, Data, Seek, N) when N > 0 ->
     <<_:Seek/binary, Delim:3/binary, _/binary>> = Data,

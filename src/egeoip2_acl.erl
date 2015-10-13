@@ -1,4 +1,4 @@
--module(egeoip_acl).
+-module(egeoip2_acl).
 -export([parse_file/1,
          lookup/2]).
 

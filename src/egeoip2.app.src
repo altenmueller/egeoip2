@@ -1,8 +1,8 @@
-{application,egeoip,
+{application,egeoip2,
  [{description,"geolocation by IP"},
   {vsn,"1.0"},
   {modules,[]},
   {registered, []},
   {env, [{dbfile, city}]},
-  {mod, {egeoip_app, []}},
+  {mod, {egeoip2_app, []}},
   {applications,[kernel,stdlib]}]}.
