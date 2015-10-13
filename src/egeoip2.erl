@@ -14,7 +14,7 @@
 
 %% gen_server based API
 -export([start/0, start/1, start_link/1, start_link/2, stop/0,
-         lookup/1, lookup_pl/1, reload/0, reload/1, filename/0]).
+         lookup/1, reload/0, reload/1, filename/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, terminate/2, code_change/3,
@@ -138,18 +138,6 @@ lookup(Address) ->
             lookup(Ip);
         Error ->
             Error
-    end.
-
-%% @spec lookup_pl(Address) -> geoip()
-%% @doc Get a proplist version of a geoip() record for the given address.
-lookup_pl(Address) ->
-    case lookup(Address) of
-        {ok, #geoip{} = R} ->
-            E = record_info(fields, geoip),
-            lists:zip(E, lists:map(fun ensure_binary_list/1,
-                                   tl(tuple_to_list(R))));
-        Other ->
-            Other
     end.
 
 %% @spec record_fields() -> Fields::list()
@@ -325,171 +313,9 @@ lookup_record(D, Ip) ->
     {ok, Bits, IPV} = geodata2_ip:make_ip(Ip),
     geodata2_format:lookup(D#geoipdb.meta, D#geoipdb.data, Bits, IPV).
 
-read_structures(Path, Data, Seek, N) when N > 0 ->
-    <<_:Seek/binary, Delim:3/binary, _/binary>> = Data,
-    case Delim of
-        <<255, 255, 255>> ->
-            <<_:Seek/binary, _:3/binary, DbType, _/binary>> = Data,
-            Type = case DbType >= 106 of
-                       true ->
-                           DbType - 105;
-                       false ->
-                           DbType
-                   end,
-            Segments = case Type of
-                           ?GEOIP_REGION_EDITION_REV0 ->
-                               ?GEOIP_STATE_BEGIN_REV0;
-                           ?GEOIP_REGION_EDITION_REV1 ->
-                               ?GEOIP_STATE_BEGIN_REV1;
-                           ?GEOIP_COUNTRY_EDITION ->
-                               ?GEOIP_COUNTRY_BEGIN;
-                           ?GEOIP_PROXY_EDITION ->
-                               ?GEOIP_COUNTRY_BEGIN;
-                           ?GEOIP_NETSPEED_EDITION ->
-                               ?GEOIP_COUNTRY_BEGIN;
-                           _ ->
-                               read_segments(Type, Data, Seek + 4)
-                       end,
-            Length = case Type of
-                         ?GEOIP_ORG_EDITION ->
-                             ?ORG_RECORD_LENGTH;
-                         ?GEOIP_ISP_EDITION ->
-                             ?ORG_RECORD_LENGTH;
-                         _ ->
-                             ?STANDARD_RECORD_LENGTH
-                     end,
-            #geoipdb{type = Type,
-                     segments = Segments,
-                     record_length = Length,
-                     data = Data,
-                     filename = Path};
-        _ ->
-            read_structures(Path, Data, Seek - 1, N - 1)
-    end.
-
-get_record(D, SeekCountry) when D#geoipdb.segments =:= SeekCountry ->
-    #geoip{};
-get_record(D=#geoipdb{record_length = Length,
-                      segments = Segments,
-                      data = Data,
-                      type = Type},
-           SeekCountry) ->
-    Seek = SeekCountry + (((2 * Length) - 1) * Segments),
-    <<_:Seek/binary, CountryNum, _/binary>> = Data,
-    Country = country_code(D, CountryNum),
-    Country3 = country_code3(D, CountryNum),
-    CountryName = country_name(D, CountryNum),
-    {Region, Seek1} = until_null(Data, Seek + 1, 0),
-    {City, Seek2} = until_null(Data, Seek1, 0),
-    {Postal, Seek3} = until_null(Data, Seek2, 0),
-    <<_:Seek3/binary, RawLat:24/little, RawLon:24/little, _/binary>> = Data,
-    Lat = (RawLat / 10000) - 180,
-    Lon = (RawLon / 10000) - 180,
-    {DmaCode, AreaCode} = get_record_ex(Type, Country, Data, Seek3 + 6),
-    #geoip{country_code = Country,
-           country_code3 = Country3,
-           country_name = CountryName,
-           region = Region,
-           city = City,
-           postal_code = Postal,
-           latitude = Lat,
-           longitude = Lon,
-           dma_code = DmaCode,
-           area_code = AreaCode}.
-
-get_record_ex(?GEOIP_CITY_EDITION_REV1, "US", Data, Seek) ->
-    <<_:Seek/binary, Combo:24/little, _/binary>> = Data,
-    {Combo div 1000, Combo rem 1000};
-get_record_ex(_, _, _, _) ->
-    {0, 0}.
-
-seek_country(D, Ip) ->
-    seek_country(D, Ip, 0, 31).
-
-seek_country(D, _Ip, Offset, _Depth) when Offset >= D#geoipdb.segments ->
-    Offset;
-seek_country(D, Ip, Offset, Depth) when Depth >= 0 ->
-    RecordLength = D#geoipdb.record_length,
-    RB = 8 * RecordLength,
-    Seek = 2 * RecordLength * Offset,
-    <<_:Seek/binary, L:RB/little, R:RB/little, _/binary>> = D#geoipdb.data,
-    seek_country(
-      D,
-      Ip,
-      case (Ip band (1 bsl Depth)) of
-          0 -> L;
-          _ -> R
-      end,
-      Depth - 1).
-
-until_null(Binary, Start, Index) ->
-    Skip = Start + Index,
-    <<_:Skip/binary, Byte, _/binary>> = Binary,
-    case Byte of
-        0 ->
-            Length = Skip - Start,
-            <<_:Start/binary, Result:Length/binary, _/binary>> = Binary,
-            {Result, 1 + Skip};
-        _ ->
-            until_null(Binary, Start, 1 + Index)
-    end.
-
-check_state(D) ->
-    true = (size(D#geoipdb.country_codes) =:= ?GEOIP_NUM_COUNTRIES),
-    true = (size(D#geoipdb.country_codes3) =:= ?GEOIP_NUM_COUNTRIES),
-    true = (size(D#geoipdb.country_names) =:= ?GEOIP_NUM_COUNTRIES),
-    ok.
-
-country_code(D, Number) ->
-    try
-        element(Number, D#geoipdb.country_codes)
-    catch
-        error:badarg -> ""
-    end.
-
-country_code3(D, Number) ->
-    try
-        element(Number, D#geoipdb.country_codes3)
-    catch
-        error:badarg -> ""
-    end.
-
-country_name(D, Number) ->
-    try
-        element(Number, D#geoipdb.country_names)
-    catch
-        error:badarg -> ""
-    end.
-
-read_segments(Type, Data, Seek) when Type == ?GEOIP_CITY_EDITION_REV0;
-                                     Type == ?GEOIP_CITY_EDITION_REV1;
-                                     Type == ?GEOIP_ORG_EDITION;
-                                     Type == ?GEOIP_ISP_EDITION;
-                                     Type == ?GEOIP_ASNUM_EDITION ->
-    Bits = ?SEGMENT_RECORD_LENGTH * 8,
-    <<_:Seek/binary, Segments:Bits/little, _/binary>> = Data,
-    Segments.
-
-
 priv_path(Components) ->
     AppDir = case code:which(?MODULE) of
                  cover_compiled -> "..";
                  F -> filename:dirname(filename:dirname(F))
              end,
     filename:join([AppDir, "priv" | Components]).
-
-load_file(Path) ->
-    case file:read_file(Path) of
-        {ok, Raw} ->
-            case filename:extension(Path) of
-                ".gz" ->
-                    zlib:gunzip(Raw);
-                _ ->
-                    Raw
-            end
-    end.
-
-ensure_binary_list(L) when is_list(L) ->
-    list_to_binary(L);
-ensure_binary_list(Other) ->
-    Other.
